@@ -1,16 +1,16 @@
 Clear
 # Begin Script
-$vmhost_name = "vcf-w01-esx04"
-$vmhost_temp_ip = "192.168.100.13"
+$vmhost_name = "vcf-w01-esx01"
+$vmhost_temp_ip = "192.168.100.13" #DHCP IP
 
 # Settings to Change per VMhost
-$mgmt_vlan = "100"
-$dns_domain = "wardhomelab.nl"
+$mgmt_vlan = "<your vlan>"
+$dns_domain = "<your domain name>"
 $vmhost_subnetmask = "255.255.255.0"
 $ntpserver="nl.pool.ntp.org"
-$dnsAddress1 = "192.168.150.5"
-$dnsAddress2 = "192.168.100.1"
-$vmkernelgateway = "192.168.100.1"
+$dnsAddress1 = "<your primaire dns server>"
+$dnsAddress2 = "<your secondary dns server>"
+$vmkernelgateway = "<gateway ip adres>"
 $MockFile = "D:\ISO\VCF9\nested-vsan-esa-mock-hw.vib"
 
 $ESXCreds = Get-Credential
