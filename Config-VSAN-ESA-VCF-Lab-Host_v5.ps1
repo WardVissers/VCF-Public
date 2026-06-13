@@ -77,7 +77,7 @@ function Connect-ESXiSSH {
             -AcceptKey:$true
 
         Write-Host "SSH connection successful: $($VMHost.Name)" -ForegroundColor Green
-
+N
         return $session
     }
     catch {
@@ -191,72 +191,70 @@ Write-Host "  [+] vSwitch0 MTU set to $TargetMtu" -ForegroundColor Green
 $esxDatastore = "${vmhost_name}-datastore"
 $vmstorePath = "vmstores:\$vmhost@443\ha-datacenter\$esxDatastore"
 
+
+# === vSAN ESA Mock VIB ===
+Write-Host "Are you want to install vSAN ESA Mock VIB? (Y/N)" 
+$answer = Read-Host 
+if ($answer -match '^[Yy]$') {
 # === VIB vSAN ESA Mock Deployment ===
     $vibPath = "/vmfs/volumes/$esxDatastore/nested-vsan-esa-mock-hw.vib"
     Write-Host "Connecting to $vmhost for VIB installation..." -ForegroundColor Cyan
-try {
-    $esxcli = Get-EsxCli -VMHost $vmhost -V2
-    Write-Host "Uploading '$vSANESAMockVib' to $vmstorePath ..."
-    Copy-DatastoreItem -Item $vSANESAMockVib -Destination $vmstorePath -Force -ErrorAction Stop 
-
-    Write-Host "Setting acceptance level to CommunitySupported ..."
-    $esxcli.software.acceptance.set.Invoke(@{ level = "CommunitySupported" })
-
-    Write-Host "Installing VIB ..."
-    $installParams = @{ viburl = $vibPath; nosigcheck = $true }
-    $result = $esxcli.software.vib.install.Invoke($installParams)
-
-    Write-Host "✅ VIB installation result: $($result.Message)" -ForegroundColor Green
-} catch {
-    Write-Host "❌ EsxCLI operations failed on $VMName ($vmhost): $_" -ForegroundColor Red
-    }
-
-# === Synology Vib Deployment ===
-    $vibPath = "/vmfs/volumes/$esxDatastore/Synology_bootbank_Synology-ESX-syno-nfs-vaai-plugin_2.0-1109.vib"
-    Write-Host "Connecting to $vmhost for VIB installation..." -ForegroundColor Cyan
-try {
-    $esxcli = Get-EsxCli -VMHost $vmhost -V2
-    Write-Host "Uploading '$SynologyNFSVib' to $vmstorePath ..."
-    Copy-DatastoreItem -Item $SynologyNFSVib -Destination $vmstorePath -Force -ErrorAction Stop 
-
-    # Skip ivm Already Done
-    #EWrite-Host "Setting acceptance level to CommunitySupported ..."
-    #$esxcli.software.acceptance.set.Invoke(@{ level = "CommunitySupported" })
-
-    Write-Host "Installing VIB ..."
-    $installParams = @{ viburl = $vibPath; nosigcheck = $true }
-    $result = $esxcli.software.vib.install.Invoke($installParams)
-
-    Write-Host "✅ VIB installation result: $($result.Message)" -ForegroundColor Green
-} catch {
-    Write-Host "❌ EsxCLI operations failed on $VMName ($vmhost): $_" -ForegroundColor Red
-    }
-
-# === Realtek Vib Deployment ===
-Write-Host "Are you running Realtek Vib Nic? (Y/N)" -foreground Yellow
-$answer = Read-Host 
-if ($answer -match '^[Yy]$') {
-    $vibPath = "/vmfs/volumes/$esxDatastore/vmw_bootbank_if-re_1.101.01-5vmw.800.1.0.20613240.vib"
-    Write-Host "Connecting to $vmhost for VIB installation..." -ForegroundColor Cyan
     try {
         $esxcli = Get-EsxCli -VMHost $vmhost -V2
-         Write-Host "Uploading '$RealtekNetVib' to $vmstorePath ..."
-        Copy-DatastoreItem -Item $RealtekNetVib -Destination $vmstorePath -Force -ErrorAction Stop 
+        Write-Host "Uploading '$vSANESAMockVib' to $vmstorePath ..."
+        Copy-DatastoreItem -Item $vSANESAMockVib -Destination $vmstorePath -Force -ErrorAction Stop 
+
+        Write-Host "Setting acceptance level to CommunitySupported ..."
+        $esxcli.software.acceptance.set.Invoke(@{ level = "CommunitySupported" })
+
+        Write-Host "Installing VIB ..."
+        $installParams = @{ viburl = $vibPath; nosigcheck = $true }
+        $result = $esxcli.software.vib.install.Invoke($installParams)
+
+        Write-Host "✅ VIB installation result: $($result.Message)" -ForegroundColor Green
+    } catch {
+        Write-Host "❌ EsxCLI operations failed on $VMName ($vmhost): $_" -ForegroundColor Red
+    }
+
+    # vSAN Optimizations, stops guest VM latency during vSAN resync when using 10Gb on ESA 
+    # NOT required when using 25Gbps networking
+    try {
+        $session = Connect-ESXiSSH -VMHost $vmhost -Credential $ESXCreds
+        # vSAN Cluster Compliance # https://knowledge.broadcom.com/external/article/372309/workaround-to-reduce-impact-of-resync-tr.html
+        # esxcfg-advcfg -s 1 /VSAN/DOMNetworkSchedulerThrottleComponent
+        $vSANClusterCompliance = "esxcli system settings advanced set -i 1 -o /VSAN/DOMNetworkSchedulerThrottleComponent"
+        Invoke-SSHCommand -SSHSession $session -Command $vSANClusterCompliance
+        # Remove-SSHSession -SSHSession $session
+        Write-Host "✅ vSAN Settings on Host on $vmHost" -ForegroundColor Green
+        } catch {
+        Write-Host "❌ vSAN Settings is not set on $vmHost" -ForegroundColor Red
+    }
+}
+
+# === Synology VIB ===
+Write-Host "Are you want to install Synology VIB? (Y/N)" 
+$answer = Read-Host
+if ($answer -match '^[Yy]$') {    
+    # === Synology Vib Deployment ===
+        $vibPath = "/vmfs/volumes/$esxDatastore/Synology_bootbank_Synology-ESX-syno-nfs-vaai-plugin_2.0-1109.vib"
+        Write-Host "Connecting to $vmhost for VIB installation..." -ForegroundColor Cyan
+    try {
+        $esxcli = Get-EsxCli -VMHost $vmhost -V2
+        Write-Host "Uploading '$SynologyNFSVib' to $vmstorePath ..."
+        Copy-DatastoreItem -Item $SynologyNFSVib -Destination $vmstorePath -Force -ErrorAction Stop 
 
         # Skip ivm Already Done
-        #EWrite-Host "Setting acceptance level to CommunitySupported ..."
+        #Write-Host "Setting acceptance level to CommunitySupported ..."
         #$esxcli.software.acceptance.set.Invoke(@{ level = "CommunitySupported" })
 
         Write-Host "Installing VIB ..."
         $installParams = @{ viburl = $vibPath; nosigcheck = $true }
         $result = $esxcli.software.vib.install.Invoke($installParams)
-    Write-Host "✅ VIB installation result: $($result.Message)" -ForegroundColor Green
+
+        Write-Host "✅ VIB installation result: $($result.Message)" -ForegroundColor Green
     } catch {
-       Write-Host "❌ EsxCLI operations failed on $VMName ($vmhost): $_" -ForegroundColor Red
+        Write-Host "❌ EsxCLI operations failed on $VMName ($vmhost): $_" -ForegroundColor Red
     }
-}
-Else {
-         Write-Host "Skipped because host is not not using Realtek NIC's"
 }
 
 # Are you running a MS-A2 host & Disable apichv
@@ -266,18 +264,22 @@ if ($answer -match '^[Yy]$') {
     try {
     $session = Connect-ESXiSSH -VMHost $vmhost -Credential $ESXCreds
     
+    # Workaround required for AMD Ryzen-based CPU to allow NVMe Tiering
     $GenerateDisableCommand = "echo 'monitor_control.disable_apichv ='TRUE'' >> /etc/vmware/config"
     Invoke-SSHCommand -SSHSession $session -Command $GenerateDisableCommand
 
+    # NSX Edge workaround for non-EPYC systems
     $GenerateDisableCommand2 = "echo 'cpuid.brandstring = '$MiniforumServer'' >> /etc/vmware/config"
     Invoke-SSHCommand -SSHSession $session -Command $GenerateDisableCommand2
 
+
+    ## Fix some performance issues with intel X710 hardware offload
     $GenerateDisableCommand3 = "esxcli system settings advanced set -i 0 -o /Net/TcpipDefLROEnabled"
     Invoke-SSHCommand -SSHSession $session -Command $GenerateDisableCommand3
-
     $GenerateDisableCommand4 = "esxcli system settings advanced set -o /Net/UseHwTSO -i 0"
     Invoke-SSHCommand -SSHSession $session -Command $GenerateDisableCommand4
 
+    # Performance tweak for zen5 processor architecture
     $GenerateDisableCommand5 = "esxcli system settings kernel set -s entropySources -v 1"
     Invoke-SSHCommand -SSHSession $session -Command $GenerateDisableCommand5
 
@@ -285,30 +287,53 @@ if ($answer -match '^[Yy]$') {
     } catch {
       Write-Host "❌ VM Settings are NOT deployed on $vmHost" -ForegroundColor Red
     }
+}
 
-    # === VIB vSAN ESA Mock Deployment ===
-    $vibPath = "/vmfs/volumes/$esxDatastore/vmw_bootbank_smntemp_910.1.0.0005-5vmw.803.0.0.24022510.vib"
+# Memory Optimalisation
+try {
+    $session = Connect-ESXiSSH -VMHost $vmhost -Credential $ESXCreds
+    
+    # Enable inter vm transparent memory sharing
+    # https://knowledge.broadcom.com/external/article/323624/additional-transparent-page-sharing-mana.html
+    $GenerateDisableCommand6 = "esxcli system settings advanced set -o /Mem/ShareForceSalting -i 0"
+    Invoke-SSHCommand -SSHSession $session -Command $GenerateDisableCommand6
+    # Activate backing of guest large pages with host large pages. 
+    # Reduces TLB misses and improves performance in server workloads that use guest large pages
+    $GenerateDisableCommand7 = "esxcli system settings advanced set -o /Mem/AllocGuestLargePage -i 0"
+    Invoke-SSHCommand -SSHSession $session -Command $GenerateDisableCommand7
+  
+    Write-Host "✅ Memory Optimalisation Settings are deployed on $vmHost " -ForegroundColor Green
+} catch {
+    Write-Host "❌ Memory Optimalisation Settings are NOT deployed on $vmHost" -ForegroundColor Red
+}
+
+# === AMD Zen4/Zen5 IPMI Thermal Driver ===
+# https://williamlam.com/2026/05/amd-zen4-zen5-ipmi-thermal-driver-for-esx-fling.html
+Write-Host "Do you want to install Miniforum MS-A2 Temp? (Y/N)" -foreground Yellow
+$answer = Read-Host 
+if ($answer -match '^[Yy]$') {
+    $vibPath = "/vmfs/volumes/$esxDatastore/vmw_bootbank_smntemp_910.1.0.0006-5vmw.803.0.0.24022510.vib"
     Write-Host "Connecting to $vmhost for VIB installation..." -ForegroundColor Cyan
     try {
-        $esxcli = Get-EsxCli -VMHost $vmhost -V2
-        Write-Host "Uploading '$AMDterminalVib' to $vmstorePath ..."
-        Copy-DatastoreItem -Item $AMDterminalVib -Destination $vmstorePath -Force -ErrorAction Stop 
+            $esxcli = Get-EsxCli -VMHost $vmhost -V2
+            Write-Host "Uploading '$AMDterminalVib' to $vmstorePath ..."
+            Copy-DatastoreItem -Item $AMDterminalVib -Destination $vmstorePath -Force -ErrorAction Stop 
 
-        Write-Host "Setting acceptance level to CommunitySupported ..."
-        $esxcli.software.acceptance.set.Invoke(@{ level = "CommunitySupported" })
+            Write-Host "Setting acceptance level to CommunitySupported ..."
+            $esxcli.software.acceptance.set.Invoke(@{ level = "CommunitySupported" })
 
-        Write-Host "Installing VIB ..."
-        $installParams = @{ viburl = $vibPath; nosigcheck = $true }
-        $result = $esxcli.software.vib.install.Invoke($installParams)
+            Write-Host "Installing VIB ..."
+            $installParams = @{ viburl = $vibPath; nosigcheck = $true }
+            $result = $esxcli.software.vib.install.Invoke($installParams)
 
-         Write-Host "✅ VIB installation result: $($result.Message)" -ForegroundColor Green
-    } catch {
+             Write-Host "✅ VIB installation result: $($result.Message)" -ForegroundColor Green
+        } catch {
         Write-Host "❌ EsxCLI operations failed on $VMName ($vmhost): $_" -ForegroundColor Red
         }
 
-}
+    }
 Else {
-         Write-Host "Skipped because host is not MS-A2 host"
+    Write-Host "Skipped because host is not MS-A2 host"
 }
 
 # Enable Memory Tiering
