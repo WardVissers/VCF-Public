@@ -13,6 +13,6 @@ Set-Location $vcf_folder
 $Credential = Get-Credential -UserName "administrator@vsphere.local" -Message "vCenter Login Creds"
 
  # Shutdown Test Run
-.\vcf_services_runtime_shutdown_v2.ps1 -DryRun -NodeIp 192.168.100.135  -Credential $Credential
+.\vcf_services_runtime_shutdown_v2.ps1 -DryRun -NodeIp <your_node_here>  -Credential $Credential
 # Shutdown Run
-.\vcf_services_runtime_shutdown_v2.ps1 -NodeIp 192.168.100.135  -Credential $Credential
+.\vcf_services_runtime_shutdown_v2.ps1 -NodeIp <your_node_here> -Credential $Credential
